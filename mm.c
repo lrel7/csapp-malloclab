@@ -69,6 +69,9 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char*)(bp) + GET_SIZE(((char*)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char*)(bp)-GET_SIZE(((char*)(bp)-DSIZE)))
 
+/* Constants and macros for segragated list */
+#define NUM_CLASSES 20
+
 static char* heap_listp;  // always points to the second prologue block
 
 static void* extend_heap(size_t words);
@@ -80,16 +83,21 @@ static void place(void* bp, size_t asize);
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
-    /*  Create the initial empty heap with 4 words*/
-    if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void*)-1) {
+    /*  Create the initial empty heap with (4 + `NUM_CLASSES`) words*/
+    if ((heap_listp = mem_sbrk((4 + NUM_CLASSES) * WSIZE)) == (void*)-1) {
         return -1;
     }
 
-    PUT(heap_listp, 0);                           // the 1st word: padding
-    PUT(heap_listp + WSIZE, PACK(DSIZE, 1));      // the 2nd word: prologue header
-    PUT(heap_listp + 2 * WSIZE, PACK(DSIZE, 1));  // the 3rd word: prologue footer
-    PUT(heap_listp + 3 * WSIZE, PACK(DSIZE, 1));  // the 4th word: epilogue header
-    heap_listp += (2 * WSIZE);                    // move `heap_listp` to the second prologue block
+    /* Init head pointer for each class */
+    for (int i = 0; i < NUM_CLASSES; i++) {
+        PUT(heap_listp + i * WSIZE, NULL);
+    }
+
+    char* ptr = heap_listp + NUM_CLASSES * WSIZE;
+    PUT(ptr, 0);                           // the 1st word: padding
+    PUT(ptr + WSIZE, PACK(DSIZE, 1));      // the 2nd word: prologue header
+    PUT(ptr + 2 * WSIZE, PACK(DSIZE, 1));  // the 3rd word: prologue footer
+    PUT(ptr + 3 * WSIZE, PACK(0, 1));  // the 4th word: epilogue header
 
     /* Extend the empty heap with a free block of `CHUNKSIZE` bytes */
     if (!extend_heap(CHUNKSIZE / WSIZE)) {
