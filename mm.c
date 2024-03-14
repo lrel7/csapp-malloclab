@@ -88,7 +88,7 @@ int mm_init(void) {
     PUT(heap_listp, 0);                           // the 1st word: padding
     PUT(heap_listp + WSIZE, PACK(DSIZE, 1));      // the 2nd word: prologue header
     PUT(heap_listp + 2 * WSIZE, PACK(DSIZE, 1));  // the 3rd word: prologue footer
-    PUT(heap_listp + 3 * WSIZE, PACK(DSIZE, 1));  // the 4th word: epilogue header
+    PUT(heap_listp + 3 * WSIZE, PACK(0, 1));  // the 4th word: epilogue header
     heap_listp += (2 * WSIZE);                    // move `heap_listp` to the prologue block's foot
 
     /* Extend the empty heap with a free block of `CHUNKSIZE` bytes */
