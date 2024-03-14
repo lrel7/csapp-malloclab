@@ -1,0 +1,27 @@
+/* Case 1: both the previous and next block are allocated */
+if (prev_alloc && next_alloc) {
+    return bp;
+}
+
+/* Case 2: the previous block is free and the next block is allocated */
+else if (prev_alloc && !next_alloc) {
+    size += GET_SIZE(HDRP(NEXT_BLKP(bp)));  // get size of the next block
+    PUT(HDRP(bp), PACK(size, 0));           // set size of the coalesced block (head)
+    PUT(FTRP(bp), PACK(size, 0));           // set size of the coalesced block (foot)
+}
+
+/* Case 3: the previous block is allocated and the next block is free */
+else if (!prev_alloc && next_alloc) {
+    size += GET_SIZE(FTRP(PREV_BLKP(bp)));  // get size of the previous block
+    PUT(FTRP(bp), PACK(size, 0));
+    PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+    bp = PREV_BLKP(bp);
+}
+
+/* Case 4: both the previous and next block are free */
+else {
+    size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
+    PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
+    PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
+    bp = PREV_BLKP(bp);
+}

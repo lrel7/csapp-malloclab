@@ -69,7 +69,7 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char*)(bp) + GET_SIZE(((char*)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char*)(bp)-GET_SIZE(((char*)(bp)-DSIZE)))
 
-static char* heap_listp;  // always points to the second prologue block
+static char* heap_listp;  // always points to the prologue block's foot
 
 static void* extend_heap(size_t words);
 static void* coalesce(void* bp);
@@ -89,7 +89,7 @@ int mm_init(void) {
     PUT(heap_listp + WSIZE, PACK(DSIZE, 1));      // the 2nd word: prologue header
     PUT(heap_listp + 2 * WSIZE, PACK(DSIZE, 1));  // the 3rd word: prologue footer
     PUT(heap_listp + 3 * WSIZE, PACK(DSIZE, 1));  // the 4th word: epilogue header
-    heap_listp += (2 * WSIZE);                    // move `heap_listp` to the second prologue block
+    heap_listp += (2 * WSIZE);                    // move `heap_listp` to the prologue block's foot
 
     /* Extend the empty heap with a free block of `CHUNKSIZE` bytes */
     if (!extend_heap(CHUNKSIZE / WSIZE)) {
