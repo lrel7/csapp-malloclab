@@ -74,7 +74,6 @@ static char* heap_listp;  // always points to the second prologue block
 static void* extend_heap(size_t words);
 static void* coalesce(void* bp);
 static void* find_fit(size_t asize);
-static void* best_fit(size_t asize);
 static void place(void* bp, size_t asize);
 
 /*
@@ -235,20 +234,22 @@ static void* coalesce(void* bp) {
 }
 
 /*
- * find_fit - Find the first fit block
+ * find_fit - Find the first fit block (best fit policy)
  */
 static void* find_fit(size_t asize) {
-    void* bp;
+    void *bp, *best_bp = NULL;
+    size_t min_size = 0xffffffff;
 
     /* Go through the heap list*/
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-        if (!GET_ALLOC(HDRP(bp)) && (GET_SIZE(HDRP(bp))) > asize) {  // free and large enough
-            return bp;
+        size_t size = GET_SIZE(HDRP(bp));
+        if (!GET_ALLOC(HDRP(bp)) && (size >= asize) && (size < min_size)) {  // free and large enough
+            min_size = size;
+            best_bp = bp;
         }
     }
 
-    /* No fit */
-    return NULL;
+    return best_bp;
 }
 
 /*
