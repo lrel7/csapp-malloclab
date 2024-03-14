@@ -1,0 +1,6 @@
+/* No fit found, extend the heap and place the block */
+esize = MAX(asize, CHUNKSIZE);
+if (bp = extend_heap(esize / WSIZE)) {
+    place(bp, asize);
+    return bp;
+}

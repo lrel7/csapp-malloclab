@@ -144,7 +144,7 @@ void mm_free(void* ptr) {
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
 
-    /* Coalesce if the previous block was free */
+    /* Coalesce if the neighbor blocks were free */
     coalesce(ptr);
 }
 
