@@ -72,12 +72,23 @@ team_t team = {
 /* Constants and macros for segragated list */
 #define NUM_CLASSES 20
 
-static char* heap_listp;  // always points to the second prologue block
+/* Given class index, get the head pointer of the list */
+// #define GET_HEAD(idx) ((unsigned int*)(GET(heap_listp + WSIZE * idx)))
+#define HEAD(idx) (heap_listp + WSIZE * idx)
+
+/* Get the prev and next pointer of a block */
+#define PREV_P(bp) (bp)
+#define NEXT_P(bp) ((unsigned int*)bp + 1)
+
+static char* heap_listp;  // always points to the prologue block's foot
 
 static void* extend_heap(size_t words);
 static void* coalesce(void* bp);
 static void* find_fit(size_t asize);
 static void place(void* bp, size_t asize);
+static int class_index(size_t size);
+static void insert(void* bp);
+static void del(void* bp);
 
 /*
  * mm_init - initialize the malloc package.
@@ -90,19 +101,21 @@ int mm_init(void) {
 
     /* Init head pointer for each class */
     for (int i = 0; i < NUM_CLASSES; i++) {
-        PUT(heap_listp + i * WSIZE, NULL);
+        PUT(HEAD(i), NULL);
     }
 
     char* ptr = heap_listp + NUM_CLASSES * WSIZE;
     PUT(ptr, 0);                           // the 1st word: padding
     PUT(ptr + WSIZE, PACK(DSIZE, 1));      // the 2nd word: prologue header
     PUT(ptr + 2 * WSIZE, PACK(DSIZE, 1));  // the 3rd word: prologue footer
-    PUT(ptr + 3 * WSIZE, PACK(0, 1));  // the 4th word: epilogue header
+    PUT(ptr + 3 * WSIZE, PACK(0, 1));      // the 4th word: epilogue header
 
     /* Extend the empty heap with a free block of `CHUNKSIZE` bytes */
-    if (!extend_heap(CHUNKSIZE / WSIZE)) {
+    char *bp;
+    if (!(bp = extend_heap(CHUNKSIZE / WSIZE))) {
         return -1;
     }
+    // insert(bp);
 
     return 0;
 }
@@ -212,11 +225,12 @@ static void* coalesce(void* bp) {
 
     /* Case 1: both the previous and next block are allocated */
     if (prev_alloc && next_alloc) {
-        return bp;
+        // return bp;
     }
 
     /* Case 2: the previous block is free and the next block is allocated */
     else if (prev_alloc && !next_alloc) {
+        del(NEXT_BLKP(bp));                     // delete the next block from free list
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));  // get size of the next block
         PUT(HDRP(bp), PACK(size, 0));           // set size of the coalesced block (head)
         PUT(FTRP(bp), PACK(size, 0));           // set size of the coalesced block (foot)
@@ -224,6 +238,7 @@ static void* coalesce(void* bp) {
 
     /* Case 3: the previous block is allocated and the next block is free */
     else if (!prev_alloc && next_alloc) {
+        del(PREV_BLKP(bp));
         size += GET_SIZE(FTRP(PREV_BLKP(bp)));  // get size of the previous block
         PUT(FTRP(bp), PACK(size, 0));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
@@ -232,12 +247,15 @@ static void* coalesce(void* bp) {
 
     /* Case 4: both the previous and next block are free */
     else {
+        del(PREV_BLKP(bp));
+        del(NEXT_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
 
+    insert(bp);  // insert the new free block into free list
     return bp;
 }
 
@@ -245,19 +263,22 @@ static void* coalesce(void* bp) {
  * find_fit - Find the first fit block (best fit policy)
  */
 static void* find_fit(size_t asize) {
-    void *bp, *best_bp = NULL;
-    size_t min_size = 0xffffffff;
+    void* bp;
+    int idx = class_index(asize);
 
-    /* Go through the heap list*/
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-        size_t size = GET_SIZE(HDRP(bp));
-        if (!GET_ALLOC(HDRP(bp)) && (size >= asize) && (size < min_size)) {  // free and large enough
-            min_size = size;
-            best_bp = bp;
+    /* Start from the current class, if empty, go to the next larger class */
+    while (idx < NUM_CLASSES) {
+        bp = GET(HEAD(idx));
+        while (bp) {
+            if (GET_SIZE(HDRP(bp)) >= asize) {
+                return bp;
+            }
+            bp = GET(NEXT_P(bp));
         }
+        idx++;
     }
 
-    return best_bp;
+    return NULL;
 }
 
 /*
@@ -267,14 +288,72 @@ static void* find_fit(size_t asize) {
 static void place(void* bp, size_t asize) {
     size_t csize = GET_SIZE(HDRP(bp));  // current size of the block
 
+    /* Delete the current block from free list */
+    del(bp);
+
+    /* Case 1: split */
     if ((csize - asize) >= 2 * DSIZE) {
         PUT(HDRP(bp), PACK(asize, 1));  // set size and alloc bit (1)
         PUT(FTRP(bp), PACK(asize, 1));
         bp = NEXT_BLKP(bp);  // move to the rest part
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
-    } else {
+        insert(bp);  // insert the rest part into free list
+    }
+
+    /* Case 2: no split */
+    else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
+    }
+}
+
+/*
+ * class_index - Given size, return the class index
+ */
+static int class_index(size_t size) {
+    for (int i = 0; i < NUM_CLASSES; i++) {
+        if (size <= (1 << (i + 4))) {
+            return i;
+        }
+    }
+    return NUM_CLASSES - 1;
+}
+
+static void insert(void* bp) {
+    size_t size = GET_SIZE(HDRP(bp));
+    unsigned int* head = HEAD(class_index(size));
+    void* head_bp = GET(head);
+
+    /* The list is not empty*/
+    if (head_bp) {
+        PUT(NEXT_P(bp), head_bp);  // bp->next = head_bp
+        PUT(PREV_P(bp), NULL);     // bp->prev = NULL
+        PUT(PREV_P(head_bp), bp);  // head_bp->prev = bp
+        PUT(head, bp);             // head = bp
+    }
+
+    /* The list is empty */
+    else {
+        PUT(NEXT_P(bp), NULL);  // bp->next = NULL
+        PUT(PREV_P(bp), NULL);  // bp->prev = NULL
+        PUT(head, bp);          // head = bp
+    }
+}
+
+static void del(void* bp) {
+    char* prev_bp = GET(PREV_P(bp));
+    char* next_bp = GET(NEXT_P(bp));
+
+    if (prev_bp) {
+        PUT(NEXT_P(prev_bp), next_bp);  // bp->prev->next = bp->next
+    } else {                            // bp is head
+        size_t size = GET_SIZE(HDRP(bp));
+        unsigned int* head = HEAD(class_index(size));
+        PUT(head, next_bp);  // head = bp->next
+    }
+
+    if (next_bp) {
+        PUT(PREV_P(next_bp), prev_bp);  // bp->next->prev = bp->prev
     }
 }
