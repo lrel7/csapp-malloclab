@@ -173,14 +173,43 @@ void mm_free(void* ptr) {
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
 void* mm_realloc(void* ptr, size_t size) {
+    // void* new_ptr;
+
+    // if (!(new_ptr = mm_malloc(size))) {
+    //     return NULL;
+    // }
+
+    // memcpy(new_ptr, ptr, MIN(size, GET_SIZE(HDRP(ptr))));
+    // mm_free(ptr);
+    // return new_ptr;
+
     void* new_ptr;
+    size_t asize =  DSIZE * ((size + 4 * WSIZE + (DSIZE - 1)) / DSIZE);
+    size_t old_size = GET_SIZE(HDRP(ptr));  // payload size of the current block
+
+    /* The current block is large enough */
+    if (old_size >= asize) {
+        return ptr;
+    }
+
+    /* The previous or next neighbor is free */
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(ptr)));
+    if (!next_alloc && GET_SIZE(HDRP(NEXT_BLKP(ptr))) + old_size >= asize) {
+        del(NEXT_BLKP(ptr));
+        size_t new_size = GET_SIZE(HDRP(NEXT_BLKP(ptr))) + old_size;
+        PUT(HDRP(ptr), PACK(new_size, 1));
+        PUT(FTRP(ptr), PACK(new_size, 1));
+        return ptr;
+    }
 
     if (!(new_ptr = mm_malloc(size))) {
         return NULL;
     }
 
-    memcpy(new_ptr, ptr, MIN(size, GET_SIZE(HDRP(ptr))));
-    mm_free(ptr);
+    if (ptr) {
+        memcpy(new_ptr, ptr, old_size - 4 * WSIZE);
+        mm_free(ptr);
+    }
     return new_ptr;
 }
 
