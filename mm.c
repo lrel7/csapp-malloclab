@@ -135,7 +135,7 @@ void* mm_malloc(size_t size) {
     }
 
     /* Adjust block size to include overhead and alingment paddings */
-    asize = DSIZE * ((size + DSIZE + (DSIZE - 1)) / DSIZE);
+    asize = DSIZE * ((size + 4 * WSIZE + (DSIZE - 1)) / DSIZE);
 
     /* Search the free list for a fit */
     if (bp = find_fit(asize)) {

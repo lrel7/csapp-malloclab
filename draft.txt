@@ -1,6 +1,16 @@
-/* No fit found, extend the heap and place the block */
-esize = MAX(asize, CHUNKSIZE);
-if (bp = extend_heap(esize / WSIZE)) {
-    place(bp, asize);
-    return bp;
+static void del(void* bp) {
+    char* prev_bp = GET(PREV_P(bp));
+    char* next_bp = GET(NEXT_P(bp));
+
+    if (prev_bp) {
+        PUT(NEXT_P(prev_bp), next_bp);  // bp->prev->next = bp->next
+    } else {                            // bp is head
+        size_t size = GET_SIZE(HDRP(bp));
+        unsigned int* head = HEAD(class_index(size));
+        PUT(head, next_bp);  // head = bp->next
+    }
+
+    if (next_bp) {
+        PUT(PREV_P(next_bp), prev_bp);  // bp->next->prev = bp->prev
+    }
 }
