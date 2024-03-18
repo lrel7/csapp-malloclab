@@ -62,12 +62,12 @@ team_t team = {
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 /* Given block ptr bp, compute address of its header and footer */
-#define HDRP(bp) ((char*)(bp)-WSIZE)
-#define FTRP(bp) ((char*)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
+#define HDRP(bp) ((char*)(bp)-3 * WSIZE)
+#define FTRP(bp) ((char*)(bp) + GET_SIZE(HDRP(bp)) - 4 * WSIZE)
 
 /* Given block ptr bp, compute address of next and previous blocks */
-#define NEXT_BLKP(bp) ((char*)(bp) + GET_SIZE(((char*)(bp)-WSIZE)))
-#define PREV_BLKP(bp) ((char*)(bp)-GET_SIZE(((char*)(bp)-DSIZE)))
+#define NEXT_BLKP(bp) ((char*)(bp) + GET_SIZE(HDRP(bp)))
+#define PREV_BLKP(bp) ((char*)(bp)-GET_SIZE(((char*)(bp)-4 * WSIZE)))
 
 /* Constants and macros for segragated list */
 #define NUM_CLASSES 20
@@ -77,8 +77,8 @@ team_t team = {
 #define HEAD(idx) (heap_listp + WSIZE * idx)
 
 /* Get the prev and next pointer of a block */
-#define PREV_P(bp) (bp)
-#define NEXT_P(bp) ((unsigned int*)bp + 1)
+#define PREV_P(bp) ((unsigned int*)bp - 2)
+#define NEXT_P(bp) ((unsigned int*)bp - 1)
 
 static char* heap_listp;  // always points to the prologue block's foot
 
@@ -111,7 +111,7 @@ int mm_init(void) {
     PUT(ptr + 3 * WSIZE, PACK(0, 1));      // the 4th word: epilogue header
 
     /* Extend the empty heap with a free block of `CHUNKSIZE` bytes */
-    char *bp;
+    char* bp;
     if (!(bp = extend_heap(CHUNKSIZE / WSIZE))) {
         return -1;
     }
@@ -201,6 +201,8 @@ static void* extend_heap(size_t words) {
     if ((bp = mem_sbrk(size)) == (void*)-1) {
         return NULL;
     }
+
+    bp += 2 * WSIZE;  // move to the beginning of payload
 
     /* Init free block header/footer and the epilogue header */
     PUT(HDRP(bp), PACK(size, 0));          // free block header
