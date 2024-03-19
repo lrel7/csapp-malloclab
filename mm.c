@@ -184,19 +184,28 @@ void* mm_realloc(void* ptr, size_t size) {
     // return new_ptr;
 
     void* new_ptr;
-    size_t asize =  DSIZE * ((size + 4 * WSIZE + (DSIZE - 1)) / DSIZE);
-    size_t old_size = GET_SIZE(HDRP(ptr));  // payload size of the current block
+    size_t asize = DSIZE * ((size + 4 * WSIZE + (DSIZE - 1)) / DSIZE);  // adjusted realloc size
+    size_t csize = GET_SIZE(HDRP(ptr));  // payload size of the current block
 
     /* The current block is large enough */
-    if (old_size >= asize) {
+    if (csize >= asize) {
+        /* Split */
+        // if (csize - asize >= 4 * DSIZE) {
+        //     PUT(HDRP(ptr), PACK(asize, 1));  // set size and alloc bit (1)
+        //     PUT(FTRP(ptr), PACK(asize, 1));
+        //     void* rest_ptr = NEXT_BLKP(ptr);  // move to the rest part
+        //     PUT(HDRP(rest_ptr), PACK(csize - asize, 0));
+        //     PUT(FTRP(rest_ptr), PACK(csize - asize, 0));
+        //     insert(rest_ptr);  // insert the rest part into free list
+        // }
         return ptr;
     }
 
     /* The previous or next neighbor is free */
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(ptr)));
-    if (!next_alloc && GET_SIZE(HDRP(NEXT_BLKP(ptr))) + old_size >= asize) {
+    if (!next_alloc && GET_SIZE(HDRP(NEXT_BLKP(ptr))) + csize >= asize) {
         del(NEXT_BLKP(ptr));
-        size_t new_size = GET_SIZE(HDRP(NEXT_BLKP(ptr))) + old_size;
+        size_t new_size = GET_SIZE(HDRP(NEXT_BLKP(ptr))) + csize;
         PUT(HDRP(ptr), PACK(new_size, 1));
         PUT(FTRP(ptr), PACK(new_size, 1));
         return ptr;
@@ -207,7 +216,7 @@ void* mm_realloc(void* ptr, size_t size) {
     }
 
     if (ptr) {
-        memcpy(new_ptr, ptr, old_size - 4 * WSIZE);
+        memcpy(new_ptr, ptr, csize - 4 * WSIZE);
         mm_free(ptr);
     }
     return new_ptr;
@@ -323,7 +332,7 @@ static void place(void* bp, size_t asize) {
     del(bp);
 
     /* Case 1: split */
-    if ((csize - asize) >= 2 * DSIZE) {
+    if ((csize - asize) >= 4 * DSIZE) {
         PUT(HDRP(bp), PACK(asize, 1));  // set size and alloc bit (1)
         PUT(FTRP(bp), PACK(asize, 1));
         bp = NEXT_BLKP(bp);  // move to the rest part
