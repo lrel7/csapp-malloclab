@@ -80,6 +80,8 @@ team_t team = {
 #define PREV_P(bp) ((unsigned int*)bp - 2)
 #define NEXT_P(bp) ((unsigned int*)bp - 1)
 
+#define BEST_FIT_X 10
+
 static char* heap_listp;  // always points to the prologue block's foot
 
 static void* extend_heap(size_t words);
@@ -185,7 +187,7 @@ void* mm_realloc(void* ptr, size_t size) {
 
     void* new_ptr;
     size_t asize = DSIZE * ((size + 4 * WSIZE + (DSIZE - 1)) / DSIZE);  // adjusted realloc size
-    size_t csize = GET_SIZE(HDRP(ptr));  // payload size of the current block
+    size_t csize = GET_SIZE(HDRP(ptr));                                 // payload size of the current block
 
     /* The current block is large enough */
     if (csize >= asize) {
@@ -303,22 +305,51 @@ static void* coalesce(void* bp) {
  * find_fit - Find the first fit block (best fit policy)
  */
 static void* find_fit(size_t asize) {
-    void* bp;
+    void *bp, *best_bp = NULL;
+    size_t min_size = 0xffffffff;
     int idx = class_index(asize);
 
     /* Start from the current class, if empty, go to the next larger class */
-    while (idx < NUM_CLASSES) {
+    // while (idx < NUM_CLASSES) {
+    //     bp = GET(HEAD(idx));
+    //     while (bp) {
+    //         if (GET_SIZE(HDRP(bp)) >= asize) {
+    //             return bp;
+    //         }
+    //         bp = GET(NEXT_P(bp));
+    //     }
+    //     idx++;
+    // }
+
+    /* Find first fit */
+    while (!best_bp && idx < NUM_CLASSES) {
         bp = GET(HEAD(idx));
         while (bp) {
             if (GET_SIZE(HDRP(bp)) >= asize) {
-                return bp;
+                min_size = GET_SIZE(HDRP(bp));
+                best_bp = bp;
+                break;
             }
             bp = GET(NEXT_P(bp));
         }
         idx++;
     }
 
-    return NULL;
+    /* Find best fist in the following X blocks */
+    if (best_bp) {
+        for (int i = 0; i < BEST_FIT_X; i++) {
+            if (!(bp = GET(NEXT_P(bp)))) {
+                return best_bp;
+            }
+            size_t csize = GET_SIZE(HDRP(bp));
+            if (csize >= asize && csize < min_size) {
+                min_size = csize;
+                best_bp = bp;
+            }
+        }
+    }
+
+    return best_bp;
 }
 
 /*
