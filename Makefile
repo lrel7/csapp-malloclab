@@ -6,7 +6,7 @@ VERSION = 1
 HANDINDIR = /afs/cs.cmu.edu/academic/class/15213-f01/malloclab/handin
 
 CC = gcc
-CFLAGS = -Wall -m32
+CFLAGS = -Wall -m32  # 32-bit
 
 DEBUG ?= 0
 ifeq ($(DEBUG),1)
