@@ -205,7 +205,7 @@ void mm_free(void* bp) {
     PUT(FTRP(bp), PACK(size, prev_alloc, 0));
 
     /* Notify next blk, i am free */
-    // SET_PREV_FREE(HDRP(NEXT_BLKP(bp)));
+    SET_PREV_FREE(HDRP(NEXT_BLKP(bp)));
 
     /* Coalesce, because neighbours may be free */
     coalesce(bp);
@@ -471,8 +471,8 @@ static inline void place(void* bp, size_t asize) {
         // data5 = GET(FTRP(bp));
         // addr4 = HDRP(bp);
         // addr5 = FTRP(bp);
-        // PUT(HDRP(bp), PACK(rsize, 1, 0));  // set header
-        // PUT(FTRP(bp), PACK(rsize, 1, 0));  // set footer
+        PUT(HDRP(bp), PACK(rsize, 1, 0));  // set header
+        PUT(FTRP(bp), PACK(rsize, 1, 0));  // set footer
 
         /* Insert the remained blk to free list */
         insert(bp);
