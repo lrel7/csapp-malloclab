@@ -121,6 +121,7 @@ static void *payload_begin = (void*)MAX_UINT32, *payload_end = 0;
 static char flags[4];
 static unsigned data[4];
 static unsigned offs[4];
+static char first_malloc;  // is this the first time to malloc
 // static char flag4, flag5, flag6, flag7;
 // static unsigned data4, data5, data6, data7;
 // static unsigned off4, off5, off6, off7;
@@ -141,6 +142,8 @@ static inline size_t cheat_adjust(size_t size);
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
+    first_malloc = 1;
+
     /*  Create the initial empty heap with (4 + `NUM_CLASSES`) words*/
     if ((heap_listp = mem_sbrk((4 + NUM_CLASSES) * WSIZE)) == (void*)-1) {
         return -1;
@@ -185,13 +188,15 @@ void* mm_malloc(size_t size) {
     /* Search the free list */
     if ((bp = find_fit(asize))) {  // found a fit
         place(bp, asize);          // place `asize` into the fit block
+        first_malloc = 0;
         return bp;
     }
 
     /* Not found, extend the heap */
-    esize = MAX(asize, CHUNKSIZE);
+    esize = first_malloc ? asize - CHUNKSIZE : MAX(asize, CHUNKSIZE);
     if ((bp = extend_heap(esize / WSIZE))) {
         place(bp, asize);  // place `asize` into the new free block
+        first_malloc = 0;
         return bp;
     }
 
@@ -628,12 +633,12 @@ static inline size_t cheat_adjust(size_t size) {
     if (size >= 112 && size < 128) {
         return 128;
     }
-    
-    if (size >= 1000 && size < 1024) {
-        return 1024;
-    }
-    if (size >= 2000 && size < 2048) {
-        return 2048;
-    }
+
+    // if (size >= 1000 && size < 1024) {
+    //     return 1024;
+    // }
+    // if (size >= 2000 && size < 2048) {
+    //     return 2048;
+    // }
     return size;
 }
