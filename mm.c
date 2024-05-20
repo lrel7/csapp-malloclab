@@ -259,6 +259,21 @@ void* mm_realloc(void* bp, size_t size) {
     size_t next_size = GET_SIZE(HDRP(next_bp));    // size of the next blk
     size_t prev_alloc = GET_PREV_ALLOC(HDRP(bp));
 
+    if (!prev_alloc) {
+        void* prev_bp = PREV_BLKP(bp);
+        size_t prev_size = GET_SIZE(HDRP(prev_bp));
+        if (prev_size + csize >= asize) {
+            del(prev_bp);
+            memmove(prev_bp, bp, csize - WSIZE);  // use `memmove` because overlapping
+            // memcpy(prev_bp, bp, csize - WSIZE);  // copy data
+            csize += prev_size;                  // update `csize`
+            bp = prev_bp;                        // move to prev_bp
+            PUT(HDRP(bp), PACK(csize, 1, 1));    // set header
+            SET_PREV_ALLOC(HDRP(NEXT_BLKP(bp)));
+            return bp;
+        }
+    }
+
     if (!next_alloc && next_size + csize >= asize) {
         del(next_bp);
         csize += next_size;                         // update `csize`
