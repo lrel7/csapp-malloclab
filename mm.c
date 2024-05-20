@@ -84,7 +84,7 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char*)(bp) + GET_SIZE(HDRP(bp)))
 
 /* Constants and macros for segragated list */
-#define NUM_CLASSES 20
+#define NUM_CLASSES 50
 
 /* Given class index, get the head pointer of the list */
 // #define GET_HEAD(idx) ((unsigned int*)(GET(heap_listp + WSIZE * idx)))
@@ -107,16 +107,23 @@ team_t team = {
 #define PREV_NODE(bp) ((char*)(*((unsigned*)bp)))
 #define NEXT_NODE(bp) ((char*)(*((unsigned*)bp + 1)))
 
-#define BEST_FIT_X 10
+#define BEST_FIT_X 50
+
+#define IN_RANGE(addr, begin, end) (((unsigned)addr) >= ((unsigned)begin) && ((unsigned)addr) <= ((unsigned)end))
+
+#define MAX_UINT32 0xffffffff
 
 static char* heap_listp;  // always points to the prologue block's foot
 static char* free_lists;  // always points to the start of the free list headers
 
-static unsigned data4;
-static unsigned data5;
-static void* addr4;
-static void* addr5;
-static char flag;
+/* Used for mm_realloc */
+static void *payload_begin = (void*)MAX_UINT32, *payload_end = 0;
+static char flags[4];
+static unsigned data[4];
+static unsigned offs[4];
+// static char flag4, flag5, flag6, flag7;
+// static unsigned data4, data5, data6, data7;
+// static unsigned off4, off5, off6, off7;
 
 static inline void* extend_heap(size_t words);
 static inline void* coalesce(void* bp);
@@ -125,6 +132,9 @@ static inline void place(void* bp, size_t asize);
 static inline int class_index(size_t size);
 static inline void insert(void* bp);
 static inline void del(void* bp);
+static inline void preserve_data(void* addr, int idx);
+static inline void restore_data(void* new_addr);
+static inline void realloc_reset();
 
 /*
  * mm_init - initialize the malloc package.
@@ -215,101 +225,108 @@ void mm_free(void* bp) {
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  *              Note that bp may be alloc, or NULL (in this case, equal to mm_malloc() )
  */
-// void* mm_realloc(void* bp, size_t size) {
-//     void* new_bp;
-//     size_t asize = ADJUST_ALLOC_SIZE(size);  // adjusted realloc size
-//     size_t csize = GET_SIZE(HDRP(bp));       // size of the current blk
+void* mm_realloc(void* bp, size_t size) {
+    void* new_bp;
+    size_t asize = ADJUST_ALLOC_SIZE(size);  // adjusted realloc size
+    size_t csize = GET_SIZE(HDRP(bp));       // size of the current blk
 
-//     /* Case 1: bp is NULL */
-//     if (!bp) {
-//         return mm_malloc(size);
-//     }
+    /* Case 1: bp is NULL */
+    if (!bp) {
+        return mm_malloc(size);
+    }
 
-//     /* Case 2: size == 0 */
-//     if (size == 0) {
-//         mm_free(bp);
-//         return NULL;
-//     }
+    /* Case 2: size == 0 */
+    if (size == 0) {
+        mm_free(bp);
+        return NULL;
+    }
 
-//     /* Case 3: Shrink */
-//     if (csize >= asize) {
-//         return bp;
-//     }
+    /* Case 3: Shrink */
+    if (csize >= asize) {
+        return bp;
+    }
 
-//     /* Case 4: The next blk is free, and large enough after coalescing with it */
-//     // void* next_bp = NEXT_BLKP(bp);
-//     // size_t next_alloc = GET_ALLOC(HDRP(next_bp));  // is the next blk alloc?
-//     // size_t next_size = GET_SIZE(HDRP(next_bp));    // size of the next blk
-//     // size_t prev_alloc = GET_PREV_ALLOC(HDRP(bp));
+    /* Case 4: The next blk is free, and large enough after coalescing with it */
+    void* next_bp = NEXT_BLKP(bp);
+    size_t next_alloc = GET_ALLOC(HDRP(next_bp));  // is the next blk alloc?
+    size_t next_size = GET_SIZE(HDRP(next_bp));    // size of the next blk
+    size_t prev_alloc = GET_PREV_ALLOC(HDRP(bp));
 
-//     // if (!next_alloc && next_size + csize >= asize) {
-//     //     del(next_bp);
-//     //     csize += next_size;                         // update `csize`
-//     //     PUT(HDRP(bp), PACK(csize, prev_alloc, 1));  // set header
-//     //     SET_PREV_ALLOC(HDRP(NEXT_BLKP(bp)));
-//     //     return bp;
-//     // }
+    if (!next_alloc && next_size + csize >= asize) {
+        del(next_bp);
+        csize += next_size;                         // update `csize`
+        PUT(HDRP(bp), PACK(csize, prev_alloc, 1));  // set header
+        SET_PREV_ALLOC(HDRP(NEXT_BLKP(bp)));
+        return bp;
+    }
 
-//     unsigned data1 = GET(bp);                 // preserve data before writing to prev ptr
-//     unsigned data2 = GET((unsigned*)bp + 1);  // preserve data before writing to next ptr
-//     unsigned data3 = GET(FTRP(bp));           // preserve data before writing to footer
-//     mm_free(bp);
+    /* Case 5: Otherwise, malloc a new blk to move data to */
+    // unsigned data1 = GET(bp);                 // preserve data before writing to prev ptr
+    // unsigned data2 = GET((unsigned*)bp + 1);  // preserve data before writing to next ptr
+    // unsigned data3 = GET(FTRP(bp));           // preserve data before writing to footer
 
-//     /* Case 5: Otherwise, malloc a new blk to move data to */
-//     flag = 0;
-//     if (!(new_bp = mm_malloc(size))) {
-//         return NULL;
-//     }
-//     memcpy(new_bp, bp, csize - DSIZE);  // payload size = csize - header size - footer size
+    // payload_begin = (unsigned*)bp + 2;
+    // payload_end = FTRP(bp);
+    // realloc_reset();
 
-//     /* Restore data */
-//     PUT(new_bp, data1);
-//     PUT((unsigned*)new_bp + 1, data2);
-//     PUT((char*)new_bp + csize - DSIZE, data3);
-//     if (flag) {
-//         PUT((char*)new_bp + (unsigned)addr4 - (unsigned)bp, data4);
-//         PUT((char*)new_bp + (unsigned)addr5 - (unsigned)bp, data5);
-//     }
-//     // mm_free(bp);
-//     return new_bp;
-// }
+    // mm_free(bp);
+
+    if (!(new_bp = mm_malloc(size))) {
+        return NULL;
+    }
+    memcpy(new_bp, bp, csize - WSIZE);  // payload size = csize - header size - footer size
+
+    /* Restore data */
+    // PUT(new_bp, data1);
+    // PUT((unsigned*)new_bp + 1, data2);
+    // PUT((char*)new_bp + csize - DSIZE, data3);
+    // restore_data(new_bp);
+    // if (flag) {
+    //     PUT((char*)new_bp + off4, data4);
+    //     PUT((char*)new_bp + off5, data5);
+    // }
+    // payload_begin = (void*)MAX_UINT32, payload_end = 0;  // reset the two bound
+    // realloc_reset();
+    mm_free(bp);
+    return new_bp;
+}
 
 /*
  * realloc: 重新分配块
  * 拷贝时可能会截断
  */
-void* mm_realloc(void* ptr, size_t size) {
-    size_t oldsize;
-    void* newptr;
+// void* mm_realloc(void* ptr, size_t size) {
+//     size_t oldsize;
+//     void* newptr;
 
-    // size 为 0，相当于 free
-    if (size == 0) {
-        mm_free(ptr);
-        return 0;
-    }
+//     // size 为 0，相当于 free
+//     if (size == 0) {
+//         mm_free(ptr);
+//         return 0;
+//     }
 
-    // ptr 为 NULL，相当于 malloc
-    if (ptr == NULL) {
-        return mm_malloc(size);
-    }
+//     // ptr 为 NULL，相当于 malloc
+//     if (ptr == NULL) {
+//         return mm_malloc(size);
+//     }
 
-    newptr = mm_malloc(size);
+//     newptr = mm_malloc(size);
 
-    // realloc() 失败，原块保持不变
-    if (!newptr) {
-        return 0;
-    }
+//     // realloc() 失败，原块保持不变
+//     if (!newptr) {
+//         return 0;
+//     }
 
-    // 拷贝原有数据，但是可能会产生截断
-    oldsize = GET_SIZE(HDRP(ptr));
-    oldsize = MIN(oldsize, size);
-    memcpy(newptr, ptr, oldsize);
+//     // 拷贝原有数据，但是可能会产生截断
+//     oldsize = GET_SIZE(HDRP(ptr));
+//     oldsize = MIN(oldsize, size);
+//     memcpy(newptr, ptr, oldsize);
 
-    // 释放原有块
-    mm_free(ptr);
+//     // 释放原有块
+//     mm_free(ptr);
 
-    return newptr;
-}
+//     return newptr;
+// }
 
 /***************************************************************/
 /* Helper functions */
@@ -331,7 +348,7 @@ static inline void* extend_heap(size_t words) {
         return NULL;
     }
 
-    /* Now `bp` points to the end of the previous epilogue *e
+    /* Now `bp` points to the end of the previous epilogue */
     /* i.e. the beinning of payload of the new free block */
     size_t prev_alloc = GET_PREV_ALLOC(HDRP(bp));  // is the prev block alloc?
 
@@ -350,12 +367,12 @@ static inline void* extend_heap(size_t words) {
  */
 static inline void* coalesce(void* bp) {
     void* next_bp = NEXT_BLKP(bp);
-    void* prev_bp;
+    void* prev_bp = NULL;
     size_t prev_alloc = GET_PREV_ALLOC(HDRP(bp));  // is the prev blk alloc?
     size_t next_alloc = GET_ALLOC(HDRP(next_bp));  // is the next blk alloc?
     size_t size = GET_SIZE(HDRP(bp));              // size of the current blk
     size_t next_size = GET_SIZE(HDRP(next_bp));    // size of next_bp
-    size_t prev_size;
+    size_t prev_size = 0;
     if (!prev_alloc) {
         prev_bp = PREV_BLKP(bp);
         prev_size = GET_SIZE(HDRP(prev_bp));  // size of prev_bp
@@ -404,7 +421,7 @@ static inline void* coalesce(void* bp) {
  */
 static inline void* find_fit(size_t asize) {
     void *bp, *best_bp = NULL;
-    size_t min_size = 0xffffffff, csize;
+    size_t min_size = MAX_UINT32, csize;
     int idx = class_index(asize);  // from which list to start
 
     /* Find first fit */
@@ -465,6 +482,20 @@ static inline void place(void* bp, size_t asize) {
         /* Move to the remained blk */
         bp = NEXT_BLKP(bp);
 
+        /* Save data */
+        preserve_data(HDRP(bp), 0);
+        preserve_data(FTRP(bp), 1);
+        // if (IN_RANGE(HDRP(bp), payload_begin, payload_end)) {
+        //     flag = 1;
+        //     off4 = (unsigned)HDRP(bp) - (unsigned)payload_begin;
+        //     data4 = GET(HDRP(bp));
+        // }
+        // if (IN_RANGE(FTRP(bp), payload_begin, payload_end)) {
+        //     flag = 1;
+        //     off5 = (unsigned)FTRP(bp) - (unsigned)payload_begin;
+        //     data5 = GET(FTRP(bp));
+        // }
+
         /* Set remained blk (prev_alloc set to 1, alloc set to 0) */
         // flag = 1;
         // data4 = GET(HDRP(bp));
@@ -518,6 +549,8 @@ static inline void insert(void* bp) {
 
     /* Case 1: The list is not empty*/
     if (first_bp) {
+        preserve_data(bp, 2);
+        preserve_data((unsigned*)bp + 1, 3);
         SET_PREV_PTR(bp, NULL);      // bp->prev = NULL
         SET_NEXT_PTR(bp, first_bp);  // bp->next = first_bp
         SET_PREV_PTR(first_bp, bp);  // first_bp->prev = bp
@@ -525,6 +558,8 @@ static inline void insert(void* bp) {
 
     /* Case 2: The list is empty */
     else {
+        preserve_data(bp, 2);
+        preserve_data((unsigned*)bp + 1, 3);
         SET_PREV_PTR(bp, NULL);  // bp->prev = NULL
         SET_NEXT_PTR(bp, NULL);  // bp->next = NULL
     }
@@ -551,5 +586,27 @@ static inline void del(void* bp) {
     /* Update ptr of next_bp if it exists */
     if (next_bp) {
         SET_PREV_PTR(next_bp, prev_bp);  // next_bp->prev = prev_bp
+    }
+}
+
+static inline void preserve_data(void* addr, int idx) {
+    if (IN_RANGE(addr, payload_begin, payload_end)) {
+        flags[idx] = 1;
+        offs[idx] = (unsigned)addr - ((unsigned)payload_begin - 2);
+        data[idx] = GET(addr);
+    }
+}
+
+static inline void restore_data(void* new_addr) {
+    for (size_t i = 0; i < 4; i++) {
+        if (flags[i]) {
+            PUT((char*)new_addr + offs[i], data[i]);
+        }
+    }
+}
+
+static inline void realloc_reset() {
+    for (size_t i = 0; i < 4; i++) {
+        flags[i] = 0;
     }
 }
