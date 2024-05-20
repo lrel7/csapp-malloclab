@@ -142,7 +142,7 @@ static inline size_t cheat_adjust(size_t size);
  * mm_init - initialize the malloc package.
  */
 int mm_init(void) {
-    first_malloc = 1;
+    first_malloc = 1;  // reset
 
     /*  Create the initial empty heap with (4 + `NUM_CLASSES`) words*/
     if ((heap_listp = mem_sbrk((4 + NUM_CLASSES) * WSIZE)) == (void*)-1) {
